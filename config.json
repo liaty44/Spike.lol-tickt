@@ -1,0 +1,23 @@
+{
+  "brandName": "VaeStudios",
+  "prefix": "v",
+  "ownerIds": [],
+  "staffRoleIds": [],
+  "ticketCategoryIds": {
+    "support": "",
+    "partnership": "",
+    "report": "",
+    "billing": "",
+    "other": ""
+  },
+  "transcriptChannelId": "",
+  "logChannelId": "",
+  "inactivityHours": 24,
+  "inactivityAlertsEnabled": true,
+  "ticketPanelChannelId": "",
+  "panelColor": "#7C3AED",
+  "footerText": "VaeStudios Support",
+  "maxOpenTicketsPerUser": 3,
+  "autoCloseAfterHours": 0,
+  "blockedUsers": []
+}
