@@ -1,0 +1,10 @@
+{
+  "name": "vaestudios-ticket-bot",
+  "version": "1.0.0",
+  "description": "VaeStudios Discord ticket bot with inactivity reminders and HTML transcripts",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {"start": "node src/index.js", "deploy": "node src/deploy-commands.js"},
+  "engines": {"node": ">=20.11.0"},
+  "dependencies": {"discord.js": "^14.19.3", "dotenv": "^16.4.7"}
+}
