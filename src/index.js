@@ -28,7 +28,7 @@ app.listen(PORT, () => {
 if (!process.env.DISCORD_TOKEN) { console.error('Missing DISCORD_TOKEN. Copy .env.example to .env and fill it in.'); process.exit(1); }
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.DirectMessages], partials: [Partials.Channel] });
 
-// Premium Categories as requested
+// Premium Categories
 const categories = [
   { label: 'Purchase', value: 'purchase', description: 'Payments, orders, and store inquiries', emoji: '💳' },
   { label: 'General Support', value: 'general_support', description: 'General help and technical assistance', emoji: '🛟' },
@@ -100,7 +100,7 @@ async function createTicket(interaction, category, subject, details) {
   await channel.send({ content: `<@${interaction.user.id}> ${(config.staffRoleIds || []).map(id => `<@&${id}>`).join(' ')}`, embeds: [embed(`🎫 Support Ticket: ${subject}`, `**Category:** \`${category.toUpperCase()}\`\n**Created by:** <@${interaction.user.id}>\n\n**Details:**\n> ${details}\n\n*A Spike.lol team member will be with you shortly. Please remain patient.*`)], components: controlRows(), allowedMentions: { users: [interaction.user.id], roles: config.staffRoleIds || [] } });
   
   await interaction.editReply({ content: `✨ Your ticket has been created successfully: ${channel}` });
-  await log(guild, `Ticket created: ${channel} by <@${interaction.user.id>> (${category})`);
+  await log(guild, `Ticket created: ${channel} by <@${interaction.user.id}> (${category})`);
 }
 
 async function closeTicket(channel, actor, reason = 'Ticket closed') {
