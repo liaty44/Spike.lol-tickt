@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { Client, GatewayIntentBits, Collection, REST, Routes, ActivityType, MessageFlags, ContainerBuilder, TextDisplayBuilder, SlashCommandBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits } from 'discord.js';
+import { Client, GatewayIntentBits, Collection, REST, Routes, ActivityType, MessageFlags, ContainerBuilder, TextDisplayBuilder, SlashCommandBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } from 'discord.js';
 import { readdirSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
@@ -126,6 +126,10 @@ async function handleCheckStatus(context, guild, replyFn) {
 client.commands.set(checkStatusCmd.data.name, checkStatusCmd);
 client.prefixCommands.set(checkStatusCmd.prefix, checkStatusCmd);
 
+// Temporary session storage for admin selections & waiting for drop content
+const activeSessions = new Map();
+const waitingForContent = new Map();
+
 // 🎁 Command: .dmtool (Admin Only Interactive Dropdown Menu)
 const dmToolCmd = {
     prefix: 'dmtool',
@@ -150,7 +154,6 @@ const dmToolCmd = {
             return message.reply('⚠️ Filhal kisi bhi member ne status nahi lagaya hai!');
         }
 
-        // Chunking options for select menu (Max 25 per menu)
         const options = activeMembers.slice(0, 25).map(m => 
             new StringSelectMenuOptionBuilder()
                 .setLabel(m.user.username)
@@ -185,10 +188,7 @@ const dmToolCmd = {
 
 client.prefixCommands.set(dmToolCmd.prefix, dmToolCmd);
 
-// Temporary storage for admin selections & drafts
-const activeSessions = new Map();
-
-// Interaction Handler (Buttons, Select Menus, Modals)
+// Interaction Handler (Buttons & Select Menus)
 client.on('interactionCreate', async (interaction) => {
     if (interaction.isStringSelectMenu() && interaction.customId === 'dmtool_select_users') {
         activeSessions.set(interaction.user.id, { selectedUsers: interaction.values });
@@ -201,72 +201,69 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.reply({ content: '⚠️ Pehle menu se members select karein!', ephemeral: true });
         }
 
-        const modal = new ModalBuilder()
-            .setCustomId('dmtool_modal_content')
-            .setTitle('🎁 Configure VIP Tool Drop');
+        waitingForContent.set(interaction.user.id, session.selectedUsers);
+        activeSessions.delete(interaction.user.id);
 
-        const titleInput = new TextInputBuilder()
-            .setCustomId('tool_title')
-            .setLabel('Embed Title')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Jaise: NEW VIP TOOLS DROPPED!')
-            .setRequired(true);
-
-        const descInput = new TextInputBuilder()
-            .setCustomId('tool_desc')
-            .setLabel('Embed Description / Content')
-            .setStyle(TextInputStyle.Paragraph)
-            .setPlaceholder('Yahan apna message ya details likhein...')
-            .setRequired(true);
-
-        const linkInput = new TextInputBuilder()
-            .setCustomId('tool_link')
-            .setLabel('Download / Link (Optional)')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('https://...')
-            .setRequired(false);
-
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(titleInput),
-            new ActionRowBuilder().addComponents(descInput),
-            new ActionRowBuilder().addComponents(linkInput)
-        );
-
-        await interaction.showModal(modal);
+        await interaction.reply({
+            content: `📥 **Ready to receive drop content!**\nAb ishi channel mein apna message, **Zip file**, **Photo**, ya **Link** bhej de. Bot un sabhi selected members ko turant DM kar dega!`,
+            ephemeral: true
+        });
     }
+});
 
-    if (interaction.isModalSubmit() && interaction.customId === 'dmtool_modal_content') {
-        const session = activeSessions.get(interaction.user.id);
-        if (!session) return interaction.reply({ content: 'Session expired. Dobara try karein.', ephemeral: true });
+// Message Create Event (Handling Broadcast Content & Prefix Commands)
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
 
-        const title = interaction.fields.getTextInputValue('tool_title');
-        const desc = interaction.fields.getTextInputValue('tool_desc');
-        const link = interaction.fields.getTextInputValue('tool_link');
+    // Check if this admin is currently waiting to send a drop content
+    if (waitingForContent.has(message.author.id)) {
+        const userIds = waitingForContent.get(message.author.id);
+        waitingForContent.delete(message.author.id);
 
-        await interaction.deferReply({ ephemeral: true });
-
+        const statusMsg = await message.reply('⚡ Sending drop to selected members...');
         let successCount = 0;
-        for (const userId of session.selectedUsers) {
+
+        for (const userId of userIds) {
             try {
                 const user = await client.users.fetch(userId);
                 const c = new ContainerBuilder().setAccentColor(0x57F287);
                 c.addTextDisplayComponents(
                     new TextDisplayBuilder().setContent(
-                        `# 🎁 ── ${title} ── 🎁\n\n` +
+                        `# 🎁 ── NEW VIP TOOLS DROP ── 🎁\n\n` +
                         `> ✨ *Thank you for supporting our status!*\n\n` +
-                        `${desc}\n\n` +
-                        `${link ? `🔗 **Link:** ${link}` : ''}`
+                        `${message.content ? `**Message:** ${message.content}\n\n` : ''}` +
+                        `*[View original message in server](${message.url})*`
                     )
                 );
                 await user.send({ components: [c], flags: MessageFlags.IsComponentsV2 });
+
+                // Forward attachments (Zip files, images, etc.)
+                if (message.attachments.size > 0) {
+                    for (const att of message.attachments.values()) {
+                        await user.send({ content: `📦 **File Attachment:** ${att.url}` });
+                    }
+                }
                 successCount++;
             } catch (err) {
                 console.error(`Failed to DM user ${userId}`);
             }
         }
 
-        activeSessions.delete(interaction.user.id);
-        await interaction.editReply(`⚡ Successfully dispatched tool drop to **${successCount}** members via DMs!`);
+        await statusMsg.edit(`⚡ Successfully dispatched tool drop with files/links to **${successCount}** members via DMs!`);
+        return;
+    }
+
+    // Prefix Commands Handler
+    if (!message.content.startsWith(PREFIX)) return;
+    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+    const cmdName = args.shift().toLowerCase();
+    const cmd = client.prefixCommands.get(cmdName);
+    if (!cmd) return;
+
+    try {
+        await cmd.prefixExecute(message, args, client);
+    } catch (err) {
+        console.error(err);
     }
 });
 
@@ -296,36 +293,6 @@ client.once('ready', () => {
         i = (i + 1) % statuses.length;
         client.user.setActivity(statuses[i].name, { type: statuses[i].type });
     }, 10000);
-});
-
-// Message Create Event (Prefix Commands Handler)
-client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
-    if (!message.content.startsWith(PREFIX)) return;
-
-    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
-    const cmdName = args.shift().toLowerCase();
-    const cmd = client.prefixCommands.get(cmdName);
-    if (!cmd) return;
-
-    try {
-        await cmd.prefixExecute(message, args, client);
-    } catch (err) {
-        console.error(err);
-    }
-});
-
-// Interaction Create Event (Slash Commands)
-client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-    const cmd = client.commands.get(interaction.commandName);
-    if (!cmd) return;
-    try {
-        await cmd.execute(interaction, client);
-    } catch (err) {
-        console.error(err);
-        if (!interaction.replied) await interaction.reply({ content: 'Error executing command.', ephemeral: true }).catch(() => {});
-    }
 });
 
 client.login(TOKEN);
