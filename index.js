@@ -23,7 +23,7 @@ app.listen(PORT, () => {
 const TOKEN = process.env.DISCORD_TOKEN;
 const TOOLS_CHANNEL_ID = process.env.TOOLS_CHANNEL_ID;
 const PREFIX = '.';
-const TARGET_STATUS = '.gg/Spike.lol Free Tools And Stuff';
+const TARGET_STATUS = 'spike.lol'; // Thoda flexible rakha hai taaki asani se match ho jaye
 
 if (!TOKEN) {
     console.error('❌ Error: DISCORD_TOKEN is missing in environment variables!');
@@ -69,7 +69,14 @@ function saveStatusData(data) {
 
 function hasTargetStatus(presence) {
     if (!presence || !presence.activities) return false;
-    return presence.activities.some(act => act.type === 4 && act.state && act.state.includes(TARGET_STATUS));
+    return presence.activities.some(act => {
+        // Type 4 is Custom Status
+        if (act.type === 4 && act.state) {
+            const stateLower = act.state.toLowerCase();
+            return stateLower.includes('spike.lol') || stateLower.includes('free tools');
+        }
+        return false;
+    });
 }
 
 // Command: /checkstatus
@@ -163,13 +170,15 @@ client.on('messageCreate', async (message) => {
             if (guild) {
                 await guild.members.fetch();
                 let sentCount = 0;
+                let fallbackCount = 0;
                 const db = loadStatusData();
 
-                guild.members.cache.forEach(async (member) => {
+                for (const member of guild.members.cache.values()) {
                     if (member.user.bot) return;
                     const presence = guild.presences.cache.get(member.id);
 
                     if (hasTargetStatus(presence)) {
+                        let dmSuccess = false;
                         try {
                             const dm = await member.createDM();
                             const c = new ContainerBuilder().setAccentColor(0x5865F2);
@@ -189,17 +198,26 @@ client.on('messageCreate', async (message) => {
                                 }
                             }
                             sentCount++;
+                            dmSuccess = true;
                             db[member.id] = { username: member.user.tag, active: true };
                         } catch (err) {
-                            console.error(`DM failed for ${member.user.tag}`);
+                            // Agar DM band hai, toh channel mein hi mention karke drop bhej do (Fallback)
+                            try {
+                                await message.channel.send({
+                                    content: `<@${member.id}> 🎁 **VIP Drop for you (DM closed):**\n${message.content || ''}`,
+                                });
+                                fallbackCount++;
+                            } catch (e) {
+                                console.error(`Fallback failed for ${member.user.tag}`);
+                            }
                         }
                     }
-                });
+                }
 
                 saveStatusData(db);
                 await message.react('✅').catch(() => {});
-                const confirm = await message.reply(`⚡ Dispatched tools to **${sentCount}** members wearing the status!`);
-                setTimeout(() => confirm.delete().catch(() => {}), 5000);
+                const confirm = await message.reply(`⚡ Dispatched tools to **${sentCount}** DMs and **${fallbackCount}** channel mentions for status holders!`);
+                setTimeout(() => confirm.delete().catch(() => {}), 7000);
             }
         }
     }
