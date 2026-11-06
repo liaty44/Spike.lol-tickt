@@ -3,14 +3,18 @@ import { Client, GatewayIntentBits, Collection, REST, Routes } from 'discord.js'
 import { readdirSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
-import { TOKEN, CLIENT_ID } from './src/utils/config.js';
+import { TOKEN } from './src/utils/config.js';
 import { checkStatusCmd } from './src/commands/statusTracker.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Client ID ab hum directly yahan ya config se utha sakte hain, ya phir Token se decode kar sakte hain
+// Par agar config mein CLIENT_ID set hai toh theek, nahi toh token se extract ya hardcode kar lo
+import { CLIENT_ID } from './src/utils/config.js';
+
 if (!TOKEN || !CLIENT_ID) {
-    console.error('Missing DISCORD_TOKEN or DISCORD_CLIENT_ID in env.');
+    console.error('Missing DISCORD_TOKEN or CLIENT_ID in config.');
     process.exit(1);
 }
 
@@ -36,11 +40,11 @@ const commandsArray = [checkStatusCmd.data.toJSON()];
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 try {
-    console.log('Registering slash commands...');
+    console.log('   [SlashCmds] Registering slash commands...');
     await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commandsArray });
-    console.log('Successfully registered slash commands!');
+    console.log('   [SlashCmds] Successfully registered slash commands!');
 } catch (err) {
-    console.error('Failed to register slash commands:', err);
+    console.error('   [SlashCmds] ✗ Failed to register commands:', err);
 }
 
 // Load Events
