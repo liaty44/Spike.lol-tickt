@@ -7,9 +7,7 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// ⚙️ Configurations direct yahan set hain (Render error ka koi chakkar nahi)
 const TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.DISCORD_CLIENT_ID || '1340918804677709844'; // Apni Client ID yahan bhi daal sakta hai
 const TOOLS_CHANNEL_ID = process.env.TOOLS_CHANNEL_ID;
 const PREFIX = '.';
 const TARGET_STATUS = '.gg/Spike.lol Free Tools And Stuff';
@@ -18,6 +16,18 @@ if (!TOKEN) {
     console.error('❌ Error: DISCORD_TOKEN is missing in environment variables!');
     process.exit(1);
 }
+
+// Token se automatically Client ID nikalne ka tareeka (Unknown Application error se bachne ke liye)
+function parseTokenToClientId(token) {
+    try {
+        const base64Id = token.split('.')[0];
+        return Buffer.from(base64Id, 'base64').toString('ascii');
+    } catch {
+        return process.env.DISCORD_CLIENT_ID || '';
+    }
+}
+
+const CLIENT_ID = process.env.DISCORD_CLIENT_ID || parseTokenToClientId(TOKEN);
 
 const client = new Client({
     intents: [
@@ -32,7 +42,7 @@ const client = new Client({
 client.commands = new Collection();
 client.prefixCommands = new Collection();
 
-// 📊 Status Tracker & Tools Logic
+// 📊 Status Tracker Logic
 const STATUS_FILE = 'status_users.json';
 
 function loadStatusData() {
@@ -101,15 +111,17 @@ client.commands.set(checkStatusCmd.data.name, checkStatusCmd);
 client.prefixCommands.set(checkStatusCmd.prefix, checkStatusCmd);
 
 // Register Slash Commands API
-const rest = new REST({ version: '10' }).setToken(TOKEN);
-try {
-    console.log('   [SlashCmds] Registering slash commands...');
-    // Agar CLIENT_ID nahi hai toh token se extract karne ki koshish ya fallback
-    const inferredClientId = CLIENT_ID; 
-    await rest.put(Routes.applicationCommands(inferredClientId), { body: [checkStatusCmd.data.toJSON()] });
-    console.log('   [SlashCmds] Successfully registered slash commands!');
-} catch (err) {
-    console.error('   [SlashCmds] ✗ Failed to register commands:', err);
+if (CLIENT_ID) {
+    const rest = new REST({ version: '10' }).setToken(TOKEN);
+    try {
+        console.log('   [SlashCmds] Registering slash commands...');
+        await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [checkStatusCmd.data.toJSON()] });
+        console.log('   [SlashCmds] Successfully registered slash commands!');
+    } catch (err) {
+        console.error('   [SlashCmds] ✗ Failed to register commands:', err);
+    }
+} else {
+    console.warn('   [SlashCmds] Skipped registration: Client ID could not be resolved.');
 }
 
 // Ready Event
