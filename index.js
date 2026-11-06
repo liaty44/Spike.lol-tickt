@@ -22,7 +22,7 @@ app.listen(PORT, () => {
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const PREFIX = '.';
-const TARGET_STATUS = 'spike.lol';
+const TARGET_STATUS = '.gg/spike.lol'; // Exact match ke liye yahan set hai
 
 if (!TOKEN) {
     console.error('❌ Error: DISCORD_TOKEN is missing in environment variables!');
@@ -64,12 +64,13 @@ function saveStatusData(data) {
     writeFileSync(STATUS_FILE, JSON.stringify(data, null, 2));
 }
 
+// 🔍 Strict Status Matching Logic (Ab sirf exact target status match hoga)
 function hasTargetStatus(presence) {
     if (!presence || !presence.activities) return false;
     return presence.activities.some(act => {
         if (act.type === 4 && act.state) {
             const stateLower = act.state.toLowerCase();
-            return stateLower.includes('spike.lol') || stateLower.includes('free tools');
+            return stateLower.includes(TARGET_STATUS.toLowerCase());
         }
         return false;
     });
@@ -151,7 +152,7 @@ const dmToolCmd = {
         });
 
         if (activeMembers.length === 0) {
-            return message.reply('⚠️ Filhal kisi bhi member ne status nahi lagaya hai!');
+            return message.reply('⚠️ Filhal kisi bhi member ne exact target status nahi lagaya hai!');
         }
 
         const options = activeMembers.slice(0, 25).map(m => 
@@ -215,7 +216,6 @@ client.on('interactionCreate', async (interaction) => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
-    // Check if this admin is currently waiting to send a drop content
     if (waitingForContent.has(message.author.id)) {
         const userIds = waitingForContent.get(message.author.id);
         waitingForContent.delete(message.author.id);
@@ -237,7 +237,6 @@ client.on('messageCreate', async (message) => {
                 );
                 await user.send({ components: [c], flags: MessageFlags.IsComponentsV2 });
 
-                // Forward attachments (Zip files, images, etc.)
                 if (message.attachments.size > 0) {
                     for (const att of message.attachments.values()) {
                         await user.send({ content: `📦 **File Attachment:** ${att.url}` });
@@ -253,7 +252,6 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    // Prefix Commands Handler
     if (!message.content.startsWith(PREFIX)) return;
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const cmdName = args.shift().toLowerCase();
