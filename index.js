@@ -237,7 +237,7 @@ client.on('messageCreate', async (message) => {
                 const c = new ContainerBuilder().setAccentColor(0x57F287);
                 c.addTextDisplayComponents(
                     new TextDisplayBuilder().setContent(
-                        `# 🎁 ── NEW VIP TOOLS DROP ── 🎁\n\n` +
+                        `# 🎁 ── NEW TOOLS DROP ── 🎁\n\n` +
                         `> ✨ *Thank you for supporting our status!*\n\n` +
                         `${message.content ? `**Message:** ${message.content}\n\n` : ''}` +
                         `*[View original message in server](${message.url})*`
