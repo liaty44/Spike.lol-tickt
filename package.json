@@ -1,5 +1,5 @@
 {
-  "name": "spike-lol-bot",
+  "name": "spike.lol-tickt",
   "version": "1.0.0",
   "type": "module",
   "main": "index.js",
@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "discord.js": "^14.14.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
   }
 }
