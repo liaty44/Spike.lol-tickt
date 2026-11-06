@@ -3,9 +3,22 @@ import { Client, GatewayIntentBits, Collection, REST, Routes, ActivityType, Mess
 import { readdirSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
+import express from 'express';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// 🌐 Render ke "No port detected" error se bachne ke liye Express server
+const app = express();
+const PORT = process.env.PORT || 10000;
+
+app.get('/', (req, res) => {
+    res.send('⚡ Spike.lol Bot is alive and running successfully!');
+});
+
+app.listen(PORT, () => {
+    console.log(`[HTTP] Server is listening on port ${PORT}`);
+});
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const TOOLS_CHANNEL_ID = process.env.TOOLS_CHANNEL_ID;
@@ -17,7 +30,7 @@ if (!TOKEN) {
     process.exit(1);
 }
 
-// Token se automatically Client ID nikalne ka tareeka (Unknown Application error se bachne ke liye)
+// Token se automatically Client ID nikalne ka tareeka
 function parseTokenToClientId(token) {
     try {
         const base64Id = token.split('.')[0];
