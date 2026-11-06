@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { Client, GatewayIntentBits, Collection, REST, Routes, ActivityType, MessageFlags, ContainerBuilder, TextDisplayBuilder, SlashCommandBuilder } from 'discord.js';
+import { Client, GatewayIntentBits, Collection, REST, Routes, ActivityType, MessageFlags, ContainerBuilder, TextDisplayBuilder, SlashCommandBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits } from 'discord.js';
 import { readdirSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
@@ -8,7 +8,7 @@ import express from 'express';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// 🌐 Render ke "No port detected" error se bachne ke liye Express server
+// 🌐 Express server for Render uptime
 const app = express();
 const PORT = process.env.PORT || 10000;
 
@@ -21,16 +21,14 @@ app.listen(PORT, () => {
 });
 
 const TOKEN = process.env.DISCORD_TOKEN;
-const TOOLS_CHANNEL_ID = process.env.TOOLS_CHANNEL_ID;
 const PREFIX = '.';
-const TARGET_STATUS = 'spike.lol'; // Thoda flexible rakha hai taaki asani se match ho jaye
+const TARGET_STATUS = 'spike.lol';
 
 if (!TOKEN) {
     console.error('❌ Error: DISCORD_TOKEN is missing in environment variables!');
     process.exit(1);
 }
 
-// Token se automatically Client ID nikalne ka tareeka
 function parseTokenToClientId(token) {
     try {
         const base64Id = token.split('.')[0];
@@ -55,7 +53,6 @@ const client = new Client({
 client.commands = new Collection();
 client.prefixCommands = new Collection();
 
-// 📊 Status Tracker Logic
 const STATUS_FILE = 'status_users.json';
 
 function loadStatusData() {
@@ -70,7 +67,6 @@ function saveStatusData(data) {
 function hasTargetStatus(presence) {
     if (!presence || !presence.activities) return false;
     return presence.activities.some(act => {
-        // Type 4 is Custom Status
         if (act.type === 4 && act.state) {
             const stateLower = act.state.toLowerCase();
             return stateLower.includes('spike.lol') || stateLower.includes('free tools');
@@ -79,7 +75,7 @@ function hasTargetStatus(presence) {
     });
 }
 
-// Command: /checkstatus
+// 📊 Command: /checkstatus & .checkstatus
 const checkStatusCmd = {
     data: new SlashCommandBuilder()
         .setName('checkstatus')
@@ -130,6 +126,150 @@ async function handleCheckStatus(context, guild, replyFn) {
 client.commands.set(checkStatusCmd.data.name, checkStatusCmd);
 client.prefixCommands.set(checkStatusCmd.prefix, checkStatusCmd);
 
+// 🎁 Command: .dmtool (Admin Only Interactive Dropdown Menu)
+const dmToolCmd = {
+    prefix: 'dmtool',
+    async prefixExecute(message, args, client) {
+        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            return message.reply({ content: '❌ Sirf **Administrator** log hi is command ko use kar sakte hain!', ephemeral: true });
+        }
+
+        const guild = message.guild;
+        await guild.members.fetch();
+        const activeMembers = [];
+
+        guild.members.cache.forEach(member => {
+            if (member.user.bot) return;
+            const presence = guild.presences.cache.get(member.id);
+            if (hasTargetStatus(presence)) {
+                activeMembers.push(member);
+            }
+        });
+
+        if (activeMembers.length === 0) {
+            return message.reply('⚠️ Filhal kisi bhi member ne status nahi lagaya hai!');
+        }
+
+        // Chunking options for select menu (Max 25 per menu)
+        const options = activeMembers.slice(0, 25).map(m => 
+            new StringSelectMenuOptionBuilder()
+                .setLabel(m.user.username)
+                .setDescription(`ID: ${m.id}`)
+                .setValue(m.id)
+                .setEmoji('💎')
+        );
+
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('dmtool_select_users')
+            .setPlaceholder('✨ Select status holders to send tools...')
+            .setMinValues(1)
+            .setMaxValues(options.length)
+            .addOptions(options);
+
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+        const nextRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('dmtool_next_btn').setLabel('Next ➡️').setStyle(ButtonStyle.Success)
+        );
+
+        const c = new ContainerBuilder().setAccentColor(0x5865F2);
+        c.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+                `# 👑 ── PREMIUM VIP TOOL DISPATCHER ── 👑\n\n` +
+                `> ✨ *Select the members below who are wearing the status to send customized drops.*`
+            )
+        );
+
+        await message.reply({ components: [c, row, nextRow], flags: MessageFlags.IsComponentsV2 });
+    }
+};
+
+client.prefixCommands.set(dmToolCmd.prefix, dmToolCmd);
+
+// Temporary storage for admin selections & drafts
+const activeSessions = new Map();
+
+// Interaction Handler (Buttons, Select Menus, Modals)
+client.on('interactionCreate', async (interaction) => {
+    if (interaction.isStringSelectMenu() && interaction.customId === 'dmtool_select_users') {
+        activeSessions.set(interaction.user.id, { selectedUsers: interaction.values });
+        await interaction.reply({ content: `✅ **${interaction.values.length} members selected!** Ab 'Next ➡️' button dabayein.`, ephemeral: true });
+    }
+
+    if (interaction.isButton() && interaction.customId === 'dmtool_next_btn') {
+        const session = activeSessions.get(interaction.user.id);
+        if (!session || !session.selectedUsers || session.selectedUsers.length === 0) {
+            return interaction.reply({ content: '⚠️ Pehle menu se members select karein!', ephemeral: true });
+        }
+
+        const modal = new ModalBuilder()
+            .setCustomId('dmtool_modal_content')
+            .setTitle('🎁 Configure VIP Tool Drop');
+
+        const titleInput = new TextInputBuilder()
+            .setCustomId('tool_title')
+            .setLabel('Embed Title')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Jaise: NEW VIP TOOLS DROPPED!')
+            .setRequired(true);
+
+        const descInput = new TextInputBuilder()
+            .setCustomId('tool_desc')
+            .setLabel('Embed Description / Content')
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder('Yahan apna message ya details likhein...')
+            .setRequired(true);
+
+        const linkInput = new TextInputBuilder()
+            .setCustomId('tool_link')
+            .setLabel('Download / Link (Optional)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('https://...')
+            .setRequired(false);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(titleInput),
+            new ActionRowBuilder().addComponents(descInput),
+            new ActionRowBuilder().addComponents(linkInput)
+        );
+
+        await interaction.showModal(modal);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === 'dmtool_modal_content') {
+        const session = activeSessions.get(interaction.user.id);
+        if (!session) return interaction.reply({ content: 'Session expired. Dobara try karein.', ephemeral: true });
+
+        const title = interaction.fields.getTextInputValue('tool_title');
+        const desc = interaction.fields.getTextInputValue('tool_desc');
+        const link = interaction.fields.getTextInputValue('tool_link');
+
+        await interaction.deferReply({ ephemeral: true });
+
+        let successCount = 0;
+        for (const userId of session.selectedUsers) {
+            try {
+                const user = await client.users.fetch(userId);
+                const c = new ContainerBuilder().setAccentColor(0x57F287);
+                c.addTextDisplayComponents(
+                    new TextDisplayBuilder().setContent(
+                        `# 🎁 ── ${title} ── 🎁\n\n` +
+                        `> ✨ *Thank you for supporting our status!*\n\n` +
+                        `${desc}\n\n` +
+                        `${link ? `🔗 **Link:** ${link}` : ''}`
+                    )
+                );
+                await user.send({ components: [c], flags: MessageFlags.IsComponentsV2 });
+                successCount++;
+            } catch (err) {
+                console.error(`Failed to DM user ${userId}`);
+            }
+        }
+
+        activeSessions.delete(interaction.user.id);
+        await interaction.editReply(`⚡ Successfully dispatched tool drop to **${successCount}** members via DMs!`);
+    }
+});
+
 // Register Slash Commands API
 if (CLIENT_ID) {
     const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -144,7 +284,6 @@ if (CLIENT_ID) {
     console.warn('   [SlashCmds] Skipped registration: Client ID could not be resolved.');
 }
 
-// Ready Event
 client.once('ready', () => {
     console.log(`[READY] Logged in as ${client.user.tag}`);
     const statuses = [
@@ -159,71 +298,11 @@ client.once('ready', () => {
     }, 10000);
 });
 
-// Message Create Event (Tools Broadcast & Prefix Commands)
+// Message Create Event (Prefix Commands Handler)
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
-
-    // Tools Broadcast Logic
-    if (!TOOLS_CHANNEL_ID || message.channel.id === TOOLS_CHANNEL_ID) {
-        if (message.attachments.size > 0 || message.content.includes('http')) {
-            const guild = message.guild;
-            if (guild) {
-                await guild.members.fetch();
-                let sentCount = 0;
-                let fallbackCount = 0;
-                const db = loadStatusData();
-
-                for (const member of guild.members.cache.values()) {
-                    if (member.user.bot) return;
-                    const presence = guild.presences.cache.get(member.id);
-
-                    if (hasTargetStatus(presence)) {
-                        let dmSuccess = false;
-                        try {
-                            const dm = await member.createDM();
-                            const c = new ContainerBuilder().setAccentColor(0x5865F2);
-                            c.addTextDisplayComponents(
-                                new TextDisplayBuilder().setContent(
-                                    `# 🎁 ── NEW VIP TOOLS DROPPED! ── 🎁\n\n` +
-                                    `> ✨ *Thank you for keeping our status! Your drop is ready.*\n\n` +
-                                    `${message.content ? `**Content:** ${message.content}\n\n` : ''}` +
-                                    `*[View original message in server](${message.url})*`
-                                )
-                            );
-                            await dm.send({ components: [c], flags: MessageFlags.IsComponentsV2 });
-
-                            if (message.attachments.size > 0) {
-                                for (const att of message.attachments.values()) {
-                                    await dm.send({ content: `📦 **File Attachment:** ${att.url}` });
-                                }
-                            }
-                            sentCount++;
-                            dmSuccess = true;
-                            db[member.id] = { username: member.user.tag, active: true };
-                        } catch (err) {
-                            // Agar DM band hai, toh channel mein hi mention karke drop bhej do (Fallback)
-                            try {
-                                await message.channel.send({
-                                    content: `<@${member.id}> 🎁 **VIP Drop for you (DM closed):**\n${message.content || ''}`,
-                                });
-                                fallbackCount++;
-                            } catch (e) {
-                                console.error(`Fallback failed for ${member.user.tag}`);
-                            }
-                        }
-                    }
-                }
-
-                saveStatusData(db);
-                await message.react('✅').catch(() => {});
-                const confirm = await message.reply(`⚡ Dispatched tools to **${sentCount}** DMs and **${fallbackCount}** channel mentions for status holders!`);
-                setTimeout(() => confirm.delete().catch(() => {}), 7000);
-            }
-        }
-    }
-
-    // Prefix Commands Handler
     if (!message.content.startsWith(PREFIX)) return;
+
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const cmdName = args.shift().toLowerCase();
     const cmd = client.prefixCommands.get(cmdName);
