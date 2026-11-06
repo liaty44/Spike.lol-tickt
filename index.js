@@ -22,7 +22,7 @@ app.listen(PORT, () => {
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const PREFIX = '.';
-const TARGET_STATUS = '.gg/spike.lol'; // Exact match ke liye yahan set hai
+const TARGET_STATUS = '.gg/spike.lol';
 
 if (!TOKEN) {
     console.error('❌ Error: DISCORD_TOKEN is missing in environment variables!');
@@ -64,7 +64,7 @@ function saveStatusData(data) {
     writeFileSync(STATUS_FILE, JSON.stringify(data, null, 2));
 }
 
-// 🔍 Strict Status Matching Logic (Ab sirf exact target status match hoga)
+// 🔍 Strict Status Matching Logic
 function hasTargetStatus(presence) {
     if (!presence || !presence.activities) return false;
     return presence.activities.some(act => {
@@ -92,7 +92,11 @@ const checkStatusCmd = {
 
 async function handleCheckStatus(context, guild, replyFn) {
     if (!guild) return;
-    await guild.members.fetch();
+    try {
+        await guild.members.fetch();
+    } catch (err) {
+        console.error('Failed to fetch members:', err);
+    }
     const db = loadStatusData();
     const activeUsers = [];
     const removedUsers = [];
@@ -116,7 +120,7 @@ async function handleCheckStatus(context, guild, replyFn) {
     const c = new ContainerBuilder().setAccentColor(0x57F287);
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `# 📊 ── STATUS TRACKER REPORT ── 📊\n\n` +
+            `# 📊 ── STATUS CHECKER REPORT ── 📊\n\n` +
             `🟢 **Active Status (${activeUsers.length}):**\n${activeUsers.slice(0, 15).join(', ') || '*None*'}\n\n` +
             `🔴 **Removed Status (${removedUsers.length}):**\n${removedUsers.slice(0, 15).join(', ') || '*None*'}`
         )
@@ -140,7 +144,11 @@ const dmToolCmd = {
         }
 
         const guild = message.guild;
-        await guild.members.fetch();
+        try {
+            await guild.members.fetch();
+        } catch (err) {
+            console.error('Failed to fetch members:', err);
+        }
         const activeMembers = [];
 
         guild.members.cache.forEach(member => {
@@ -252,6 +260,7 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
+    // Prefix Commands Handler (.checkstatus and .dmtool)
     if (!message.content.startsWith(PREFIX)) return;
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const cmdName = args.shift().toLowerCase();
@@ -291,6 +300,19 @@ client.once('ready', () => {
         i = (i + 1) % statuses.length;
         client.user.setActivity(statuses[i].name, { type: statuses[i].type });
     }, 10000);
+});
+
+// Interaction Create Event (Slash Commands Handler)
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+    const cmd = client.commands.get(interaction.commandName);
+    if (!cmd) return;
+    try {
+        await cmd.execute(interaction, client);
+    } catch (err) {
+        console.error(err);
+        if (!interaction.replied) await interaction.reply({ content: 'Error executing command.', ephemeral: true }).catch(() => {});
+    }
 });
 
 client.login(TOKEN);
