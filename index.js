@@ -22,7 +22,7 @@ app.listen(PORT, () => {
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const PREFIX = '.';
-const TARGET_STATUS = '.gg/spike.lol';
+const TARGET_STATUS = 'discord.gg/pT8RGGvtZg';
 
 if (!TOKEN) {
     console.error('❌ Error: DISCORD_TOKEN is missing in environment variables!');
